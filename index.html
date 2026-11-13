@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#121215">
+<title>ORBITA · 三维模型查看器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#121215;
+    --panel:rgba(21,21,25,.78);
+    --line:rgba(255,255,255,.08);
+    --txt:#eceae4;
+    --dim:#96948e;
+    --acc:#ff8a3c;
+    --acc-soft:rgba(255,138,60,.13);
+  }
+  html,body{height:100%}
+  body{
+    background:var(--bg);color:var(--txt);overflow:hidden;
+    font-family:'Noto Sans SC','Space Grotesk',sans-serif;
+    -webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  button{font:inherit;color:inherit}
+  #stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+
+  .panel{background:var(--panel);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line)}
+
+  /* ── 顶栏 ─────────────────────────── */
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;justify-content:space-between;align-items:flex-start;padding:16px 18px;pointer-events:none;animation:rise .7s .08s cubic-bezier(.22,1,.36,1) backwards}
+  .topbar>*{pointer-events:auto}
+  .brand{display:flex;align-items:center;gap:11px;text-shadow:0 1px 10px rgba(0,0,0,.55)}
+  .logo{width:34px;height:34px;flex:none}
+  .brand-name{display:block;font-family:'Space Grotesk';font-size:17px;font-weight:700;letter-spacing:.16em;line-height:1.05}
+  .brand-sub{display:block;font-size:11px;color:var(--dim);letter-spacing:.04em;margin-top:4px}
+  .actions{display:flex;gap:8px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:38px;padding:0 15px;border-radius:10px;border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:13px;cursor:pointer;transition:.18s}
+  .btn:hover{border-color:rgba(255,255,255,.24)}
+  .btn:active{transform:scale(.97)}
+  .btn.icon{width:38px;padding:0}
+  .btn svg{width:17px;height:17px}
+  .btn.primary{background:var(--acc);border-color:var(--acc);color:#221207;font-weight:600}
+  .btn.primary:hover{filter:brightness(1.09)}
+  .btn:focus-visible,.tbtn:focus-visible{outline:1.5px solid var(--acc);outline-offset:2px}
+
+  /* ── 左侧工具栏 ───────────────────── */
+  .rail{position:fixed;left:14px;top:50%;transform:translateY(-50%);z-index:20;display:flex;flex-direction:column;gap:4px;padding:7px;border-radius:14px;animation:fade .8s .3s backwards}
+  .tbtn{position:relative;width:40px;height:40px;display:grid;place-items:center;border:none;background:none;border-radius:9px;color:var(--dim);cursor:pointer;transition:.16s}
+  .tbtn svg{width:19px;height:19px}
+  .tbtn:hover{color:var(--txt);background:rgba(255,255,255,.06)}
+  .tbtn.on{color:var(--acc);background:var(--acc-soft)}
+  .tbtn.on::before{content:'';position:absolute;left:-7px;top:12px;bottom:12px;width:2px;border-radius:2px;background:var(--acc)}
+  .rail-sep{height:1px;background:var(--line);margin:4px 2px}
+  .tbtn .ic-p{display:none}
+  .tbtn.persp .ic-o{display:none}
+  .tbtn.persp .ic-p{display:block}
+
+  /* ── 信息面板 ─────────────────────── */
+  .info{position:fixed;right:14px;bottom:14px;z-index:20;width:246px;border-radius:13px;overflow:hidden;animation:rise .7s .4s cubic-bezier(.22,1,.36,1) backwards}
+  .info-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 12px 10px 13px;cursor:pointer}
+  .info-meta{min-width:0}
+  .info-name{display:block;font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .info-badge{display:inline-block;margin-top:5px;font-family:'Space Grotesk';font-size:9.5px;font-weight:500;letter-spacing:.14em;color:var(--acc);border:1px solid rgba(255,138,60,.4);border-radius:4px;padding:2px 6px}
+  .chev{width:14px;height:14px;flex:none;color:var(--dim);transition:transform .2s}
+  .info.collapsed .chev{transform:rotate(180deg)}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;padding:5px 13px 13px}
+  .info.collapsed .stats{display:none}
+  .stat dt{font-size:10px;color:var(--dim);letter-spacing:.1em;margin-bottom:3px}
+  .stat dd{font-family:'Space Grotesk';font-size:14px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+  #stSize{font-size:11.5px}
+  .iic{display:none;width:18px;height:18px;color:var(--acc);flex:none}
+
+  /* ── 底部提示 / FPS ───────────────── */
+  .hint{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:15;display:flex;white-space:nowrap;font-size:12px;color:var(--dim);border-radius:999px;padding:8px 18px;animation:fade .8s .55s backwards;transition:opacity .6s,transform .6s}
+  .hint span:not(:first-child)::before{content:'·';margin:0 10px;color:rgba(255,255,255,.22)}
+  .hint.hide{opacity:0;transform:translate(-50%,10px);pointer-events:none}
+  .fps{position:fixed;left:16px;bottom:17px;z-index:15;font-family:'Space Grotesk';font-size:11px;letter-spacing:.1em;color:var(--dim);font-variant-numeric:tabular-nums;animation:fade .8s .6s backwards}
+
+  /* ── Toast / 加载 / 拖放 ──────────── */
+  .toast{position:fixed;top:70px;left:50%;transform:translate(-50%,-8px);z-index:40;padding:9px 16px;border-radius:9px;font-size:12.5px;background:rgba(28,28,33,.95);border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:.25s;max-width:min(86vw,520px);text-align:center}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  .loadbar{position:fixed;top:0;left:0;right:0;height:2px;z-index:60;opacity:0;transition:opacity .2s;overflow:hidden}
+  .loadbar.show{opacity:1}
+  .loadbar i{display:block;height:100%;width:0;background:var(--acc);box-shadow:0 0 10px rgba(255,138,60,.9);transition:width .15s}
+  .loader{position:fixed;inset:0;z-index:50;display:none;place-items:center;background:rgba(10,10,12,.42);backdrop-filter:blur(3px)}
+  .loader.show{display:grid}
+  .loader .box{display:grid;justify-items:center;gap:13px;padding:26px 36px;border-radius:15px}
+  .spinner{width:30px;height:30px;border-radius:50%;border:2.5px solid rgba(255,255,255,.14);border-top-color:var(--acc);animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #loadName{font-size:12.5px;color:var(--dim);max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .loadtrack{width:210px;height:3px;border-radius:2px;background:rgba(255,255,255,.09);overflow:hidden}
+  .loadtrack i{display:block;height:100%;width:0;background:var(--acc);border-radius:2px;transition:width .15s}
+  .loadpct{font-family:'Space Grotesk';font-size:12px;color:var(--dim);min-height:15px;font-variant-numeric:tabular-nums;letter-spacing:.06em}
+  .loadtrack i.indet,.loadbar i.indet{width:34%;animation:loadslide 1.05s ease-in-out infinite alternate}
+  @keyframes loadslide{from{transform:translateX(-45%)}to{transform:translateX(245%)}}
+  .dropzone{position:fixed;inset:0;z-index:70;display:none;place-items:center;background:rgba(8,8,10,.62);backdrop-filter:blur(4px)}
+  .dropzone.show{display:grid}
+  .dz-inner{border:1.5px dashed rgba(255,138,60,.6);border-radius:18px;padding:44px 60px;text-align:center;background:rgba(255,138,60,.04);animation:dzp 1.5s ease-in-out infinite}
+  @keyframes dzp{50%{border-color:var(--acc);background:rgba(255,138,60,.09)}}
+  .dz-inner svg{width:38px;height:38px;color:var(--acc);margin-bottom:14px}
+  .dz-t{font-size:17px;font-weight:600;margin-bottom:8px}
+  .dz-s{font-size:12px;color:var(--dim)}
+
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  @keyframes pop{from{opacity:0;transform:translateY(5px)}}
+
+  /* ── 移动端适配 ───────────────────── */
+  @media (max-width:760px){
+    .topbar{padding:11px 12px}
+    .brand{gap:9px}
+    .logo{width:27px;height:27px}
+    .brand-name{font-size:14.5px}
+    .brand-sub{display:none}
+    .btn{height:34px;font-size:12.5px}
+    .btn.icon{width:34px}
+    .btn svg{width:15px;height:15px}
+    .rail{top:auto;bottom:calc(10px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);flex-direction:row;gap:2px;padding:6px;max-width:calc(100vw - 14px);overflow-x:auto;scrollbar-width:none}
+    .rail::-webkit-scrollbar{display:none}
+    .tbtn{width:38px;height:38px;flex:none}
+    .tbtn.on::before{left:9px;right:9px;top:auto;bottom:1px;width:auto;height:2px}
+    .rail-sep{width:1px;height:auto;margin:7px 3px;align-self:stretch}
+    .info{left:auto;right:10px;width:auto;max-width:min(78vw,290px);bottom:calc(62px + env(safe-area-inset-bottom))}
+    .info.collapsed{width:42px;height:42px;max-width:none;border-radius:12px}
+    .info.collapsed .info-head{padding:0;display:flex;align-items:center;justify-content:center;width:100%;height:100%}
+    .info.collapsed .iic{display:block}
+    .info.collapsed .info-meta,.info.collapsed .chev{display:none}
+    .info:not(.collapsed) .stats{animation:pop .22s ease}
+    .info-name{max-width:min(56vw,190px)}
+    .stats{grid-template-columns:repeat(3,1fr);gap:9px 12px}
+    .stat dd{font-size:13px}
+    .hint{top:60px;bottom:auto;font-size:11px;padding:7px 14px}
+    .hint span:not(:first-child)::before{margin:0 7px}
+    .fps{display:none}
+    .toast{top:98px}
+    .dz-inner{padding:34px 30px}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+
+<!-- 顶栏 -->
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 28 28" fill="none">
+      <circle cx="14" cy="14" r="4.4" fill="currentColor"/>
+      <ellipse cx="14" cy="14" rx="12" ry="5.1" stroke="currentColor" stroke-width="1.3" transform="rotate(-24 14 14)"/>
+      <circle cx="24.9" cy="9.1" r="1.9" fill="#ff8a3c"/>
+    </svg>
+    <div>
+      <span class="brand-name">ORBITA</span>
+      <span class="brand-sub">三维模型查看器 · GLB / GLTF / OBJ / STL</span>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn icon" id="btnShot" title="保存截图（S）" aria-label="截图">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7H9l1.6-2.4a1 1 0 0 1 .83-.45h1.14a1 1 0 0 1 .83.45L15 7h3.5A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5v-9z"/><circle cx="12" cy="12.7" r="3.2"/></svg>
+    </button>
+    <button class="btn primary" id="btnOpen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4m0 0L8 8m4-4l4 4"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/></svg>
+      打开模型
+    </button>
+  </div>
+</header>
+
+<!-- 左侧工具栏 -->
+<aside class="rail panel" id="rail">
+  <button class="tbtn" id="btnAnim" title="动画 播放/暂停（P）" aria-label="动画开关" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.5v13l10-6.5L8 5.5z"/></svg>
+  </button>
+  <span class="rail-sep"></span>
+  <button class="tbtn" id="btnWire" title="线框模式（W）" aria-label="线框模式">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 15.5H3L12 4z"/><path d="M12 4l-3 15.5M12 4l3 15.5M6.9 13.6h10.2"/></svg>
+  </button>
+  <button class="tbtn" id="btnDouble" title="双面渲染（B）· 0 厚面双面可见" aria-label="双面渲染">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l8.5 4.4L12 12 3.5 7.6 12 3.2z"/><path d="M3.5 12.4L12 16.8l8.5-4.4"/><path d="M3.5 16.6L12 21l8.5-4.4"/></svg>
+  </button>
+  <button class="tbtn on" id="btnGrid" title="地面网格（G）" aria-label="地面网格">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+  </button>
+  <button class="tbtn" id="btnLight" title="光照 · 工作室（点击切换 · L）" aria-label="光照模式">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.3M12 19.7V22M2 12h2.3M19.7 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7"/></svg>
+  </button>
+  <button class="tbtn" id="btnProj" title="视图 · 正交（O 切换）" aria-label="投影模式 · 正交">
+    <svg class="ic-o" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="15" height="15" rx="1.5"/><path d="M4.5 12h15M12 4.5v15"/></svg>
+    <svg class="ic-p" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.6v8.8L12 21l-8-4.6V7.6L12 3z"/><path d="M12 12l8-4.4M12 12L4 7.6M12 12v9"/></svg>
+  </button>
+  <button class="tbtn" id="btnAuto" title="自动旋转（空格）" aria-label="自动旋转">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 3v4h-4"/></svg>
+  </button>
+  <span class="rail-sep"></span>
+  <button class="tbtn" id="btnFrame" title="重置视角（R）" aria-label="重置视角">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><circle cx="12" cy="12" r="2.2"/></svg>
+  </button>
+</aside>
+
+<!-- 信息面板 -->
+<section class="info panel" id="info">
+  <div class="info-head" id="infoHead" title="展开 / 收起">
+    <svg class="iic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.6v.01"/></svg>
+    <div class="info-meta">
+      <span class="info-name" id="infoName">—</span>
+      <span class="info-badge" id="infoBadge">—</span>
+    </div>
+    <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6"/></svg>
+  </div>
+  <dl class="stats">
+    <div class="stat"><dt>网格</dt><dd id="stMesh">0</dd></div>
+    <div class="stat"><dt>顶点</dt><dd id="stVerts">0</dd></div>
+    <div class="stat"><dt>三角面</dt><dd id="stTris">0</dd></div>
+    <div class="stat"><dt>材质</dt><dd id="stMat">0</dd></div>
+    <div class="stat"><dt>动画组</dt><dd id="stAnim">0</dd></div>
+    <div class="stat"><dt>尺寸 m</dt><dd id="stSize">–</dd></div>
+  </dl>
+</section>
+
+<div class="hint panel" id="hint"></div>
+<div class="fps" id="fps"><span id="fpsV">60</span> FPS · <span id="fpsAPI">WebGL</span></div>
+<div class="toast" id="toast"></div>
+<div class="loadbar" id="loadbar"><i id="loadbarI"></i></div>
+
+<div class="loader" id="loader">
+  <div class="box panel">
+    <div class="spinner"></div>
+    <p id="loadName">正在载入…</p>
+    <div class="loadtrack"><i id="loadFill"></i></div>
+    <p class="loadpct" id="loadPct"></p>
+  </div>
+</div>
+
+<div class="dropzone" id="dropzone">
+  <div class="dz-inner">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4m0 0L8 8m4-4l4 4"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/></svg>
+    <p class="dz-t">松开，载入模型</p>
+    <p class="dz-s">支持 GLB · GLTF · OBJ · STL，可连同贴图 / .bin / 整个文件夹一起拖入</p>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept=".glb,.gltf,.obj,.stl,.bin,.mtl,.png,.jpg,.jpeg,.webp,.bmp" multiple hidden>
+
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* ════════════ 工具函数 ════════════ */
+const $ = id => document.getElementById(id);
+const C = h => BABYLON.Color3.FromHexString(h);
+const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+const easeOutCubic = k => 1 - Math.pow(1-k, 3);
+const backOut = k => { const c1=1.70158, c3=c1+1; return 1 + c3*Math.pow(k-1,3) + c1*Math.pow(k-1,2); };
+const niceStep = x => {
+  if(!(x>0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(x))), n = x/p;
+  return (n<1.5?1 : n<3.5?2 : n<7.5?5 : 10) * p;
+};
+
+let toastTimer = null;
+function toast(msg, ms=2400){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(()=>t.classList.remove('show'), ms);
+}
+
+function tweenNum(el, to){
+  const from = parseInt(el.dataset.v || '0', 10) || 0;
+  el.dataset.v = to;
+  const t0 = performance.now(), dur = 620;
+  (function step(){
+    const k = clamp((performance.now()-t0)/dur, 0, 1);
+    el.textContent = Math.round(from + (to-from)*easeOutCubic(k)).toLocaleString('en-US');
+    if(k < 1) requestAnimationFrame(step);
+  })();
+}
+
+/* ════════════ 引擎 / 场景 ════════════ */
+const canvas = $('stage');
+const engine = new BABYLON.Engine(canvas, true, {
+  preserveDrawingBuffer:true, stencil:true, antialias:true, powerPreference:'high-performance'
+}, true);
+engine.enableOfflineSupport = false;
+engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2));
+
+const scene = new BABYLON.Scene(engine);
+scene.clearColor = BABYLON.Color4.FromHexString('#141417FF');
+const ipc = scene.imageProcessingConfiguration;
+ipc.toneMappingEnabled = true;
+ipc.exposure = 1.05;
+ipc.contrast = 1.1;
+ipc.vignetteEnabled = true;
+ipc.vignetteWeight = 1.6;
+
+/* ── 相机 ── */
+const camera = new BABYLON.ArcRotateCamera('camera', -Math.PI*1.05, 0.66, 24, new BABYLON.Vector3(0,1.9,0), scene);
+camera.attachControl(canvas, true);
+camera.lowerRadiusLimit = 0.6;
+camera.upperRadiusLimit = 120;
+camera.lowerBetaLimit = 0.01;
+camera.upperBetaLimit = Math.PI - 0.01;
+camera.wheelDeltaPercentage = 0.014;
+camera.pinchDeltaPercentage = 0.014;
+camera.panningSensibility = 850;
+camera.inertia = 0.9;
+camera.minZ = 0.05; camera.maxZ = 3000;
+
+/* ── 投影模式：正交 / 透视（默认正交）── */
+let orthoOn = true;
+function updateOrtho(){
+  const halfH = Math.tan(camera.fov/2) * camera.radius;
+  const aspect = engine.getRenderWidth() / Math.max(1, engine.getRenderHeight());
+  camera.orthoTop    =  halfH;
+  camera.orthoBottom = -halfH;
+  camera.orthoLeft   = -halfH * aspect;
+  camera.orthoRight  =  halfH * aspect;
+}
+function applyProjection(){
+  camera.mode = orthoOn ? BABYLON.Camera.ORTHOGRAPHIC_CAMERA : BABYLON.Camera.PERSPECTIVE_CAMERA;
+  if(orthoOn) updateOrtho();
+  $('btnProj').classList.toggle('persp', !orthoOn);
+  $('btnProj').title = (orthoOn ? '视图 · 正交' : '视图 · 透视') + '（O 切换）';
+  $('btnProj').setAttribute('aria-label', '投影模式 · ' + (orthoOn ? '正交' : '透视'));
+}
+function toggleProj(){
+  orthoOn = !orthoOn;
+  applyProjection();
+  toast(orthoOn ? '视图 · 正交投影（无透视变形）' : '视图 · 透视投影');
+}
+applyProjection();
+
+/* ── 灯光与阴影 ── */
+const hemi = new BABYLON.HemisphericLight('hemi', new BABYLON.Vector3(0.15,1,0.12), scene);
+hemi.diffuse = C('#faf8f2');
+hemi.groundColor = C('#38302a');
+
+const key = new BABYLON.DirectionalLight('key', new BABYLON.Vector3(-0.9,-1.5,0.8), scene);
+key.position = new BABYLON.Vector3(9, 14, -8);
+key.diffuse = C('#fff5e6');
+
+const rim = new BABYLON.DirectionalLight('rim', new BABYLON.Vector3(0.9,0.25,-1.2), scene);
+rim.diffuse = C('#c3cede');
+
+const shadow = new BABYLON.ShadowGenerator(2048, key);
+if(engine.webGLVersion > 1){
+  shadow.usePercentageCloserFiltering = true;
+  shadow.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM;
+}else{
+  shadow.useExponentialShadowMap = true;
+}
+shadow.bias = 0.0009;
+shadow.normalBias = 0.012;
+
+/* ── 环境反射 ── */
+scene.environmentTexture = BABYLON.CubeTexture.CreateFromPrefilteredData(
+  'https://assets.babylonjs.com/environments/environmentSpecular.env', scene);
+scene.environmentIntensity = 0.75;
+
+/* ── 地面 ── */
+const ground = BABYLON.MeshBuilder.CreateDisc('ground', {radius:220, tessellation:96, sideOrientation:BABYLON.Mesh.DOUBLESIDE}, scene);
+ground.rotation.x = Math.PI/2;
+ground.isPickable = false;
+const gmat = new BABYLON.PBRMaterial('gmat', scene);
+gmat.albedoColor = C('#17171b');
+gmat.metallic = 0;
+gmat.roughness = 0.95;
+ground.material = gmat;
+ground.receiveShadows = true;
+
+/* ── 地面网格 ── */
+let gridMeshes = [], showGrid = true;
+function applyGrid(){ gridMeshes.forEach(g => g.setEnabled(showGrid)); }
+function rebuildGrid(diag){
+  gridMeshes.forEach(g => g.dispose());
+  gridMeshes = [];
+  const step = niceStep(diag / 9);
+  const half = Math.min(800, Math.ceil(diag*1.5/step) * step);
+  const minor = [], major = [];
+  const n = Math.round(half/step);
+  for(let i=-n; i<=n; i++){
+    const arr = (((i%5)+5)%5 === 0) ? major : minor;
+    const p = i*step;
+    arr.push([new BABYLON.Vector3(p,0.002,-half), new BABYLON.Vector3(p,0.002,half)]);
+    arr.push([new BABYLON.Vector3(-half,0.002,p), new BABYLON.Vector3(half,0.002,p)]);
+  }
+  const mk = (lines, alpha) => {
+    const ls = BABYLON.MeshBuilder.CreateLineSystem('grid', {lines, updatable:false}, scene);
+    ls.isPickable = false;
+    ls.color = C('#93939b');
+    ls.alpha = alpha;
+    ls.baseAlpha = alpha;
+    return ls;
+  };
+  if(minor.length) gridMeshes.push(mk(minor, 0.10));
+  if(major.length) gridMeshes.push(mk(major, 0.22));
+  applyGrid();
+}
+
+/* ════════════ 光照模式 ════════════ */
+const MODES = [
+  {name:'工作室', bg:'#141417', ground:'#17171b', hemi:0.5,  env:0.75, key:2.2, rim:0.85},
+  {name:'暗室',   bg:'#070709', ground:'#0b0b0d', hemi:0.06, env:0.12, key:3.6, rim:0.28},
+  {name:'平光',   bg:'#222226', ground:'#232327', hemi:1.1,  env:1.2,  key:0.55, rim:0.5},
+];
+let modeIdx = 0;
+const lightCur = {hemi:0, env:0, key:0, rim:0, bg:new BABYLON.Color3(), ground:new BABYLON.Color3()};
+const lightTgt = {hemi:0, env:0, key:0, rim:0, bg:new BABYLON.Color3(), ground:new BABYLON.Color3()};
+function applyMode(i){
+  const m = MODES[i];
+  lightTgt.hemi=m.hemi; lightTgt.env=m.env; lightTgt.key=m.key; lightTgt.rim=m.rim;
+  lightTgt.bg.copyFrom(C(m.bg));
+  lightTgt.ground.copyFrom(C(m.ground));
+  $('btnLight').title = `光照 · ${m.name}（点击切换 · L）`;
+}
+applyMode(0);
+lightCur.hemi=lightTgt.hemi; lightCur.env=lightTgt.env; lightCur.key=lightTgt.key; lightCur.rim=lightTgt.rim;
+lightCur.bg.copyFrom(lightTgt.bg); lightCur.ground.copyFrom(lightTgt.ground);
+
+function lerpLight(dt){
+  const k = 1 - Math.exp(-dt*4.2);
+  lightCur.hemi += (lightTgt.hemi-lightCur.hemi)*k;
+  lightCur.env  += (lightTgt.env -lightCur.env )*k;
+  lightCur.key  += (lightTgt.key -lightCur.key )*k;
+  lightCur.rim  += (lightTgt.rim-lightCur.rim)*k;
+  BABYLON.Color3.LerpToRef(lightCur.bg,     lightTgt.bg,     k, lightCur.bg);
+  BABYLON.Color3.LerpToRef(lightCur.ground, lightTgt.ground, k, lightCur.ground);
+  hemi.intensity = lightCur.hemi;
+  key.intensity  = lightCur.key;
+  rim.intensity  = lightCur.rim;
+  scene.environmentIntensity = lightCur.env;
+  scene.clearColor.set(lightCur.bg.r, lightCur.bg.g, lightCur.bg.b, 1);
+  gmat.albedoColor.copyFrom(lightCur.ground);
+}
+
+/* ════════════ 模型管理 ════════════ */
+const model = { nodes:[], meshes:[], mats:new Set(), skels:[], texs:[], anims:[], meshSet:new Set(), name:'', format:'' };
+let bounds = null;
+let showcase = null, knot = null, oct = null, ringPivots = [], spawnT0 = 0;
+
+function snap(){
+  return {
+    meshes:new Set(scene.meshes), nodes:new Set(scene.transformNodes),
+    mats:new Set(scene.materials), texs:new Set(scene.textures),
+    skels:new Set(scene.skeletons), anims:new Set(scene.animationGroups)
+  };
+}
+function diffScene(b){
+  const d = (arr, set) => arr.filter(x => !set.has(x));
+  return {
+    meshes:d(scene.meshes, b.meshes), nodes:d(scene.transformNodes, b.nodes),
+    mats:d(scene.materials, b.mats), texs:d(scene.textures, b.texs),
+    skels:d(scene.skeletons, b.skels), anims:d(scene.animationGroups, b.anims)
+  };
+}
+function rootsOf(items){
+  const s = new Set(items);
+  return items.filter(n => !n.parent || !s.has(n.parent));
+}
+
+function disposePack(d){
+  rootsOf((d.meshes||[]).concat(d.nodes||[])).forEach(n => { try{ n.dispose(false, true); }catch(e){} });
+  (d.mats||[]).forEach(m => { try{ m.dispose(true, true); }catch(e){} });
+  (d.skels||[]).forEach(s => { try{ s.dispose(); }catch(e){} });
+  (d.texs||[]).forEach(t => { try{ t.dispose(); }catch(e){} });
+  (d.anims||[]).forEach(g => { try{ g.dispose(); }catch(e){} });
+}
+
+function clearModel(){
+  try{ shadow.getShadowMap().renderList = []; }catch(e){}
+  disposePack({
+    meshes: model.meshes, nodes: model.nodes,
+    mats: Array.from(model.mats),
+    skels: model.skels, texs: model.texs, anims: model.anims
+  });
+  model.nodes=[]; model.meshes=[]; model.mats.clear();
+  model.skels=[]; model.texs=[]; model.anims=[]; model.meshSet.clear();
+  showcase=null; knot=null; oct=null; ringPivots=[];
+}
+
+function refreshBounds(){
+  let mn=null, mx=null;
+  for(const m of model.meshes){
+    try{
+      m.computeWorldMatrix(true);
+      const v = m.getTotalVertices ? m.getTotalVertices() : 0;
+      if(v > 0 && m.refreshBoundingInfo) m.refreshBoundingInfo(true);
+      const bb = m.getBoundingInfo().boundingBox;
+      mn = mn ? BABYLON.Vector3.Minimize(mn, bb.minimumWorld) : bb.minimumWorld.clone();
+      mx = mx ? BABYLON.Vector3.Maximize(mx, bb.maximumWorld) : bb.maximumWorld.clone();
+    }catch(e){}
+  }
+  bounds = mn ? {min:mn, max:mx, center:mn.add(mx).scale(0.5), diag:mx.subtract(mn).length()} : null;
+}
+
+/* 相机飞行动画 */
+let camAnim = null;
+function flyTo(target, radius, opts={}){
+  const {beta, alpha, dur=900} = opts;
+  camAnim = {
+    t0: performance.now(), dur,
+    fa: camera.alpha, ta: alpha !== undefined ? alpha : camera.alpha,
+    fb: camera.beta,  tb: beta  !== undefined ? Math.min(beta, camera.upperBetaLimit-0.01) : camera.beta,
+    fr: camera.radius, tr: clamp(radius, camera.lowerRadiusLimit+0.01, 4000),
+    ft: camera.target.clone(), tt: target.clone()
+  };
+}
+
+/* 精确取景：包围盒 8 个角点逐个投影，求“完整入画”的相机距离（两种投影通用） */
+function fitRadiusFor(alpha, beta){
+  if(!bounds) return 10;
+  if(!(bounds.diag > 0)) return 0.5;
+  const sa=Math.sin(alpha), ca=Math.cos(alpha), sb=Math.sin(beta), cb=Math.cos(beta);
+  const zx=ca*sb, zy=cb, zz=sa*sb;
+  const s = sb || 1e-6;
+  const xx=zz/s, xz=-zx/s;
+  const ux=-zy*zx/s, uy=s, uz=-zy*zz/s;
+  const aspect = engine.getRenderWidth() / Math.max(1, engine.getRenderHeight());
+  const tanY = Math.tan(camera.fov/2), tanX = tanY*aspect;
+  const c = bounds.center;
+  let D = 0;
+  for(let i=0;i<8;i++){
+    const qx = ((i&1)?bounds.max.x:bounds.min.x) - c.x;
+    const qy = ((i&2)?bounds.max.y:bounds.min.y) - c.y;
+    const qz = ((i&4)?bounds.max.z:bounds.min.z) - c.z;
+    const ex = Math.abs(qx*xx + qz*xz) / tanX;
+    const ey = Math.abs(qx*ux + qy*uy + qz*uz) / tanY;
+    const ez = qx*zx + qy*zy + qz*zz;
+    const need = Math.max(ex, ey) + ez;
+    if(need > D) D = need;
+  }
+  return Math.max(D * 1.12, 0.02);
+}
+
+function frameAll(animated){
+  if(!bounds) return;
+  const beta = 1.12;
+  const r = fitRadiusFor(camera.alpha, beta);
+  camera.upperRadiusLimit = Math.max(60, r*6);
+  if(animated){
+    flyTo(bounds.center, r, {beta, dur:1100});
+  }else{
+    camera.target.copyFrom(bounds.center);
+    camera.beta = Math.min(beta, camera.upperBetaLimit - 0.01);
+    camera.radius = r;
+    if(orthoOn) updateOrtho();
+  }
+}
+
+/* 导入模型落地：居中并放在地面上 */
+function groundModel(){
+  if(!bounds || !model.nodes.length) return;
+  const delta = new BABYLON.Vector3(-bounds.center.x, -bounds.min.y, -bounds.center.z);
+  const eps = bounds.diag * 0.001 + 1e-5;
+  if(Math.abs(delta.x) < eps && Math.abs(delta.y) < eps && Math.abs(delta.z) < eps) return;
+  for(const n of model.nodes){
+    try{
+      let d = delta;
+      if(n.parent && n.parent.getWorldMatrix){
+        n.parent.computeWorldMatrix(true);
+        d = BABYLON.Vector3.TransformNormal(delta, n.parent.getWorldMatrix().clone().invert());
+      }
+      n.position.addInPlace(d);
+    }catch(e){}
+  }
+  refreshBounds();
+}
+
+function setModel(o){
+  clearModel();
+  model.meshes = o.meshes; model.nodes = o.nodes;
+  model.mats = new Set(o.mats || []);
+  model.skels = o.skels || []; model.texs = o.texs || []; model.anims = o.anims || [];
+  model.meshSet = new Set(o.meshes);
+  model.name = o.name; model.format = o.format;
+
+  for(const m of o.meshes){
+    m.isPickable = true;
+    try{ shadow.addShadowCaster(m); }catch(e){}
+  }
+
+  model.anims.forEach(g => g.start(true));
+  animOn = true; updateAnimBtn();
+  if(wireframe) model.mats.forEach(m => { try{ m.wireframe = true; }catch(e){} });
+  applyDoubleSided();
+
+  refreshBounds();
+  if(o.ground) groundModel();
+  if(bounds){
+    camera.minZ = clamp(bounds.diag / 5000, 0.001, 0.2);
+    camera.maxZ = Math.max(1000, bounds.diag * 60);
+    camera.lowerRadiusLimit = clamp(bounds.diag / 50, 0.005, 0.6);
+    rebuildGrid(bounds.diag);
+    frameAll(true);
+  }
+  updatePanel();
+}
+
+function updatePanel(){
+  let meshN=0, verts=0, tris=0;
+  for(const m of model.meshes){
+    const v = (m.getTotalVertices && m.getTotalVertices()) || 0;
+    if(v <= 0) continue;
+    meshN++; verts += v;
+    tris += Math.floor(((m.getTotalIndices && m.getTotalIndices()) || 0) / 3);
+  }
+  tweenNum($('stMesh'), meshN);
+  tweenNum($('stVerts'), verts);
+  tweenNum($('stTris'), tris);
+  tweenNum($('stMat'), model.mats.size);
+  tweenNum($('stAnim'), model.anims.length);
+  $('infoName').textContent = model.name;
+  $('infoBadge').textContent = model.format;
+  if(bounds){
+    const e = bounds.max.subtract(bounds.min);
+    $('stSize').textContent = `${e.x.toFixed(2)} × ${e.y.toFixed(2)} × ${e.z.toFixed(2)}`;
+  }
+  $('btnAnim').hidden = model.anims.length === 0;
+}
+
+/* ════════════ 演示场景：青铜扭结雕塑 ════════════ */
+let mid = 0;
+function pbr(hex, metal, rough){
+  const m = new BABYLON.PBRMaterial('m'+(mid++), scene);
+  m.albedoColor = C(hex); m.metallic = metal; m.roughness = rough;
+  return m;
+}
+function buildShowcase(){
+  showcase = new BABYLON.TransformNode('showcase', scene);
+  spawnT0 = performance.now();
+
+  const matBase   = pbr('#1e1e24', 0.45, 0.55);
+  const matBronze = pbr('#a06a32', 0.95, 0.28);
+  const matSteel  = pbr('#d6d7db', 1.0,  0.22);
+  const matAcc    = pbr('#ff8a3c', 0.1,  0.38);
+
+  const base = BABYLON.MeshBuilder.CreateCylinder('base', {diameter:3.8, height:0.22, tessellation:96}, scene);
+  base.position.y = 0.11; base.material = matBase; base.parent = showcase;
+  const base2 = BABYLON.MeshBuilder.CreateCylinder('base2', {diameterTop:2.9, diameterBottom:3.05, height:0.18, tessellation:96}, scene);
+  base2.position.y = 0.31; base2.material = matBase; base2.parent = showcase;
+
+  knot = BABYLON.MeshBuilder.CreateTorusKnot('knot', {radius:1.02, tube:0.33, radialSegments:300, tubularSegments:64, p:2, q:3}, scene);
+  knot.position.y = 2.32; knot.material = matBronze; knot.parent = showcase;
+
+  ringPivots = [];
+  const mkRing = (diam, tiltX, tiltZ, speed) => {
+    const pivot = new BABYLON.TransformNode('rp'+(mid++), scene);
+    pivot.parent = showcase; pivot.rotation.y = speed;
+    const r = BABYLON.MeshBuilder.CreateTorus('ring', {diameter:diam, thickness:0.028, tessellation:160}, scene);
+    r.parent = pivot; r.position.y = 2.32; r.material = matSteel;
+    r.rotation.x = tiltX; r.rotation.z = tiltZ;
+    ringPivots.push(pivot);
+    return r;
+  };
+  const rA = mkRing(3.7,  0.48, 0.1,  0.6);
+  const rB = mkRing(4.5, -0.3,  0.62, 2.2);
+
+  oct = BABYLON.MeshBuilder.CreatePolyhedron('oct', {type:1, size:0.2}, scene);
+  oct.position.y = 4.3; oct.material = matAcc; oct.parent = showcase;
+
+  setModel({
+    meshes:[base, base2, knot, rA, rB, oct],
+    nodes:[showcase],
+    mats:[matBase, matBronze, matSteel, matAcc],
+    anims:[],
+    name:'青铜扭结 · 演示场景',
+    format:'程序化'
+  });
+}
+
+/* ════════════ 加载进度 UI ════════════ */
+function setLoadProgress(ratio){
+  const els = [$('loadFill'), $('loadbarI')];
+  if(ratio == null){
+    els.forEach(el => { el.style.width = ''; el.classList.add('indet'); });
+    $('loadPct').textContent = '';
+  }else{
+    const p = Math.round(clamp(ratio, 0, 0.98) * 100);
+    els.forEach(el => { el.classList.remove('indet'); el.style.width = p + '%'; });
+    $('loadPct').textContent = p + '%';
+  }
+}
+let loadUITimer = null;
+function beginLoad(label){
+  setLoadProgress(null);
+  $('loadName').textContent = label;
+  clearTimeout(loadUITimer);
+  loadUITimer = setTimeout(() => {
+    $('loader').classList.add('show');
+    $('loadbar').classList.add('show');
+  }, 140);
+}
+function endLoad(){
+  clearTimeout(loadUITimer);
+  $('loader').classList.remove('show');
+  $('loadbar').classList.remove('show');
+  $('loadbarI').classList.remove('indet');
+  $('loadbarI').style.width = '0%';
+}
+
+/* ════════════ 本地文件加载 ════════════ */
+const blobMap = new Map();
+let initialBlobPrefix = null;   // ?model= 模式主文件的 blob 根（用于子资源重定向）
+let initialBaseDir = '';        // ?model= 主文件所在的原始目录（绝对地址）
+let liveBlobUrls = [];
+let busy = false;
+
+function registerFiles(items){
+  blobMap.clear();
+  for(const it of items){
+    const u = URL.createObjectURL(it.file);
+    const rel = (it.path || it.file.name).replace(/^\/+/, '');
+    const parts = rel.toLowerCase().split('/');
+    for(let i = 0; i < parts.length; i++){
+      const key = parts.slice(i).join('/');
+      if(key && !blobMap.has(key)) blobMap.set(key, u);
+    }
+  }
+}
+function releaseBlobs(urls){ urls.forEach(u => { try{ URL.revokeObjectURL(u); }catch(e){} }); }
+
+/* 传输层重定向：XHR / fetch / 图片 按路径匹配已注册 blob。
+ * ?model= 模式：主文件以“blob 根 + 文件名”被请求——已登记的主文件命中
+ * blobMap（★ 上一版漏了这步登记，导致 blob根/xxx.glb 这个不存在的地址
+ *   请求失败，即“模型已下载却显示载入失败”的根因）；
+ * 未登记的子资源（.gltf 引用的 .bin / 贴图）重定向回模型原始目录。 */
+function mapUrl(u){
+  if(typeof u !== 'string' || !u) return u;
+  if(/^(https?:|data:|\/\/)/i.test(u)) return u;
+  if(initialBlobPrefix && u.indexOf(initialBlobPrefix + '/') === 0){
+    const rest = u.slice(initialBlobPrefix.length + 1).split(/[?#]/)[0];
+    if(rest){
+      let hit = blobMap.get(rest.toLowerCase());
+      if(!hit){
+        let dec; try{ dec = decodeURIComponent(rest); }catch(e){}
+        if(dec && dec !== rest) hit = blobMap.get(dec.toLowerCase());
+      }
+      if(hit) return hit;
+      if(initialBaseDir) return initialBaseDir + rest;
+    }
+  }
+  const segs = u.split(/[?#]/)[0].split('/');
+  for(let i = segs.length - 1; i >= 0; i--){
+    const raw = segs.slice(i).join('/');
+    if(!raw) continue;
+    let hit = blobMap.get(raw.toLowerCase());
+    if(hit) return hit;
+    let dec; try{ dec = decodeURIComponent(raw); }catch(e){}
+    if(dec && dec !== raw){
+      hit = blobMap.get(dec.toLowerCase());
+      if(hit) return hit;
+    }
+  }
+  return u;
+}
+(function patchTransport(){
+  const origOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url, ...rest){
+    return origOpen.call(this, method, mapUrl(url), ...rest);
+  };
+  if(window.fetch){
+    const origFetch = window.fetch;
+    window.fetch = function(input, init){
+      if(typeof input === 'string') return origFetch.call(this, mapUrl(input), init);
+      return origFetch.call(this, input, init);
+    };
+  }
+  try{
+    const d = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    if(d && d.set && d.get){
+      Object.defineProperty(HTMLImageElement.prototype, 'src', {
+        configurable: true,
+        get(){ return d.get.call(this); },
+        set(v){ d.set.call(this, mapUrl(v)); }
+      });
+    }
+  }catch(e){}
+})();
+
+async function collectFiles(dt){
+  const out = [];
+  const entries = (dt.items ? Array.from(dt.items) : [])
+    .map(it => (it.kind === 'file' && it.webkitGetAsEntry) ? it.webkitGetAsEntry() : null)
+    .filter(Boolean);
+  if(entries.length){
+    const walk = async (entry, prefix) => {
+      if(entry.isFile){
+        const f = await new Promise((res, rej) => entry.file(res, rej)).catch(() => null);
+        if(f && f.name) out.push({file: f, path: prefix + f.name});
+      }else if(entry.isDirectory){
+        const reader = entry.createReader();
+        for(;;){
+          const batch = await new Promise((res, rej) => reader.readEntries(res, rej)).catch(() => []);
+          if(!batch.length) break;
+          for(const e of batch) await walk(e, prefix + entry.name + '/');
+        }
+      }
+    };
+    for(const e of entries) await walk(e, '');
+  }
+  if(!out.length) return Array.from(dt.files || []).filter(f => f && f.name).map(f => ({file: f, path: f.name}));
+  return out;
+}
+
+async function loadFiles(items){
+  if(busy){ toast('正在载入，请稍候…'); return; }
+  items = Array.from(items || []);
+  const main = items.find(i => /\.(glb|gltf|obj|stl)$/i.test(i.file.name));
+  if(!main){ toast('未识别到模型文件（支持 GLB / GLTF / OBJ / STL）'); return; }
+  const name = main.file.name;
+  const ext = name.split('.').pop().toLowerCase();
+  busy = true;
+  registerFiles(items);
+  beginLoad(name);
+  let before = null;
+  try{
+    before = snap();
+    const url = blobMap.get(name.toLowerCase());
+    await BABYLON.SceneLoader.ImportMeshAsync('', url + '/', name.toLowerCase(), scene, {
+      onProgress: evt => { if(evt.lengthComputable && evt.total > 0) setLoadProgress(evt.loaded / evt.total); }
+    });
+    const d = diffScene(before);
+    if(!d.meshes.length) throw new Error('文件中不包含网格数据');
+    setModel({
+      meshes: d.meshes,
+      nodes: rootsOf(d.meshes.concat(d.nodes)),
+      mats: d.mats, skels: d.skels, texs: d.texs, anims: d.anims,
+      name, format: ext.toUpperCase(), ground: true
+    });
+    releaseBlobs(liveBlobUrls);
+    liveBlobUrls = Array.from(blobMap.values());
+    toast(`已载入 · ${name}`);
+  }catch(err){
+    console.error('[ORBITA] 载入失败：', err);
+    if(before){ try{ disposePack(diffScene(before)); }catch(e){} }
+    releaseBlobs(Array.from(blobMap.values()));
+    blobMap.clear();
+    const msg = String((err && err.message) || err || '');
+    if(/no scene loader/i.test(msg))
+      toast('载入失败：加载器插件未就绪（CDN 脚本可能没加载完），请刷新页面重试', 4200);
+    else if(/network|failed|loaderror|404|xhr/i.test(msg))
+      toast('载入失败：' + msg.slice(0, 60) + '（若是 GLTF/OBJ，请连同 .bin/.mtl/贴图一起拖入）', 4600);
+    else if(msg)
+      toast('载入失败：' + msg.slice(0, 90), 4200);
+    else
+      toast('载入失败：文件可能损坏或格式不受支持', 4200);
+  }
+  endLoad();
+  busy = false;
+}
+
+/* ════════════ 初始模型 ════════════
+ * 无参数：尝试页面同目录 model.glb，失败回落演示场景。
+ * ?model=xxx：只载入指定文件，失败即为空场景（不回落任何自带模型，
+ * 避免误以为载入成功）。 */
+const modelParam = new URLSearchParams(location.search).get('model');
+const EXPLICIT_MODEL = !!(modelParam && modelParam.trim());
+const INITIAL_MODEL = EXPLICIT_MODEL ? modelParam.trim() : 'model.glb';
+
+/* 自建 XHR 下载：百分比进度与 404 检测都有保证 */
+function httpGetBuffer(url, onProgress){
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.responseType = 'arraybuffer';
+    xhr.onprogress = e => { if(e.lengthComputable && e.total > 0) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      if((xhr.status >= 200 && xhr.status < 300) ||
+         (xhr.status === 0 && xhr.response && xhr.response.byteLength > 0))
+        resolve(xhr.response);
+      else
+        reject(new Error('HTTP ' + xhr.status));
+    };
+    xhr.onerror = () => reject(new Error('network'));
+    xhr.send();
+  });
+}
+
+async function tryInitialModel(){
+  const before = snap();
+  beginLoad(INITIAL_MODEL);
+  busy = true;
+  let reason = '';
+  try{
+    const buf = await httpGetBuffer(INITIAL_MODEL, r => setLoadProgress(r));
+    const clean = INITIAL_MODEL.split(/[?#]/)[0];
+    const baseName = clean.split('/').pop() || 'model.glb';
+    const fname = baseName.toLowerCase();
+    const abs = new URL(clean, location.href);
+    initialBaseDir = abs.href.slice(0, abs.href.lastIndexOf('/') + 1);
+    const blobUrl = URL.createObjectURL(new Blob([buf]));
+    initialBlobPrefix = blobUrl;
+    blobMap.set(fname, blobUrl);          /* ★ 关键修复：登记主文件，
+                                           * Babylon 请求 blob根/fname 时由拦截层重定向回真实 blob */
+    liveBlobUrls.push(blobUrl);
+    await BABYLON.SceneLoader.ImportMeshAsync('', blobUrl + '/', fname, scene);
+    const d = diffScene(before);
+    if(!d.meshes.length) throw new Error('文件中不包含网格数据');
+    setModel({
+      meshes: d.meshes,
+      nodes: rootsOf(d.meshes.concat(d.nodes)),
+      mats: d.mats, skels: d.skels, texs: d.texs, anims: d.anims,
+      name: baseName,
+      format: (fname.split('.').pop() || '').toUpperCase(),
+      ground: true
+    });
+    toast('已载入 · ' + baseName);
+  }catch(err){
+    reason = String((err && err.message) || err || '');
+    console.error('[ORBITA] 初始模型载入失败：', err);
+    try{ disposePack(diffScene(before)); }catch(e){}
+  }
+  endLoad();
+  busy = false;
+  return {ok: !reason, reason};
+}
+
+/* 空舞台：仅地面 + 网格，信息面板归零，相机对准原点 */
+function setEmptyStage(){
+  $('infoName').textContent = '（空场景）';
+  $('infoBadge').textContent = '—';
+  ['stMesh','stVerts','stTris','stMat','stAnim'].forEach(id => {
+    const el = $(id); el.textContent = '0'; el.dataset.v = '0';
+  });
+  $('stSize').textContent = '–';
+  camera.target.copyFrom(new BABYLON.Vector3(0, 0.8, 0));
+  camera.beta = 1.12;
+  camera.radius = 7.5;
+}
+
+/* ════════════ 工具开关 ════════════ */
+let wireframe = false, autoRotate = false, animOn = true, doubleSided = false;
+let lastInteract = performance.now();
+
+function toggleWire(){
+  wireframe = !wireframe;
+  model.mats.forEach(m => { try{ m.wireframe = wireframe; }catch(e){} });
+  $('btnWire').classList.toggle('on', wireframe);
+  toast(wireframe ? '线框模式 · 开' : '线框模式 · 关');
+}
+function applyDoubleSided(){
+  model.mats.forEach(m => {
+    try{
+      if(m._origBFC === undefined) m._origBFC = m.backFaceCulling;
+      m.backFaceCulling = doubleSided ? false : m._origBFC;
+    }catch(e){}
+  });
+}
+function toggleDouble(){
+  doubleSided = !doubleSided;
+  applyDoubleSided();
+  $('btnDouble').classList.toggle('on', doubleSided);
+  toast(doubleSided ? '双面渲染 · 开（0 厚面双面可见）' : '双面渲染 · 关');
+}
+function toggleGrid(){
+  showGrid = !showGrid; applyGrid();
+  $('btnGrid').classList.toggle('on', showGrid);
+}
+function toggleAuto(){
+  autoRotate = !autoRotate;
+  $('btnAuto').classList.toggle('on', autoRotate);
+  toast(autoRotate ? '自动旋转 · 开' : '自动旋转 · 关');
+}
+function updateAnimBtn(){ $('btnAnim').classList.toggle('on', animOn); }
+function toggleAnim(){
+  if(!model.anims.length) return;
+  animOn = !animOn;
+  model.anims.forEach(g => { animOn ? g.play(true) : g.pause(); });
+  updateAnimBtn();
+  toast(animOn ? '动画 · 播放' : '动画 · 暂停');
+}
+function cycleLight(){
+  modeIdx = (modeIdx + 1) % MODES.length;
+  applyMode(modeIdx);
+  toast(`光照 · ${MODES[modeIdx].name}`);
+}
+function snapshot(){
+  BABYLON.Tools.CreateScreenshot(engine, camera, {width: engine.getRenderWidth(), height: engine.getRenderHeight()}, data => {
+    const a = document.createElement('a');
+    a.href = data; a.download = `orbita-${Date.now()}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('截图已保存');
+  });
+}
+
+/* ════════════ 交互事件 ════════════ */
+$('btnOpen').addEventListener('click', () => $('fileInput').click());
+$('fileInput').addEventListener('change', e => {
+  const items = Array.from(e.target.files || []).map(f => ({file: f, path: f.name}));
+  if(items.length) loadFiles(items);
+  e.target.value = '';
+});
+$('btnShot').addEventListener('click', snapshot);
+$('btnWire').addEventListener('click', toggleWire);
+$('btnDouble').addEventListener('click', toggleDouble);
+$('btnGrid').addEventListener('click', toggleGrid);
+$('btnAuto').addEventListener('click', toggleAuto);
+$('btnAnim').addEventListener('click', toggleAnim);
+$('btnLight').addEventListener('click', cycleLight);
+$('btnProj').addEventListener('click', toggleProj);
+$('btnFrame').addEventListener('click', () => frameAll(true));
+
+$('infoHead').addEventListener('click', () => $('info').classList.toggle('collapsed'));
+if(matchMedia('(max-width:760px)').matches) $('info').classList.add('collapsed');
+
+window.addEventListener('keydown', e => {
+  if(e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey) return;
+  switch(e.code){
+    case 'KeyW': toggleWire(); break;
+    case 'KeyB': toggleDouble(); break;
+    case 'KeyG': toggleGrid(); break;
+    case 'KeyR': frameAll(true); break;
+    case 'KeyS': snapshot(); break;
+    case 'KeyL': cycleLight(); break;
+    case 'KeyP': toggleAnim(); break;
+    case 'KeyO': toggleProj(); break;
+    case 'Space': e.preventDefault(); toggleAuto(); break;
+  }
+});
+
+let hintGone = false;
+function dismissHint(){ if(hintGone) return; hintGone = true; $('hint').classList.add('hide'); }
+setTimeout(dismissHint, 9500);
+canvas.addEventListener('pointerdown', () => {
+  camAnim = null; lastInteract = performance.now();
+  setTimeout(dismissHint, 900);
+});
+canvas.addEventListener('wheel', () => { camAnim = null; lastInteract = performance.now(); }, {passive:true});
+window.addEventListener('contextmenu', e => { if(e.target === canvas) e.preventDefault(); });
+
+/* 双击 / 双击轻点聚焦 */
+let lastDbl = 0;
+function focusAt(){
+  const n = performance.now();
+  if(n - lastDbl < 420) return;
+  lastDbl = n;
+  const pick = scene.pick(scene.pointerX, scene.pointerY, m => model.meshSet.has(m));
+  if(pick && pick.hit){
+    const b = pick.pickedMesh.getBoundingInfo().boundingBox;
+    const d = b.maximumWorld.subtract(b.minimumWorld).length();
+    flyTo(b.centerWorld, Math.max(0.6, d*2.2), {dur:700});
+    toast(`聚焦 · ${pick.pickedMesh.name || '网格'}`);
+  }else{
+    frameAll(true);
+  }
+}
+canvas.addEventListener('dblclick', focusAt);
+let lastTap = 0, tapX = 0, tapY = 0;
+canvas.addEventListener('pointerup', e => {
+  if(e.pointerType === 'mouse') return;
+  const n = performance.now();
+  if(n - lastTap < 320 && Math.hypot(e.clientX - tapX, e.clientY - tapY) < 30){
+    lastTap = 0; focusAt();
+  }else{ lastTap = n; tapX = e.clientX; tapY = e.clientY; }
+});
+
+/* 拖放 */
+let dzDepth = 0;
+window.addEventListener('dragenter', e => { e.preventDefault(); dzDepth++; $('dropzone').classList.add('show'); });
+window.addEventListener('dragleave', () => { dzDepth = Math.max(0, dzDepth-1); if(!dzDepth) $('dropzone').classList.remove('show'); });
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', async e => {
+  e.preventDefault(); dzDepth = 0; $('dropzone').classList.remove('show');
+  if(!e.dataTransfer) return;
+  const items = await collectFiles(e.dataTransfer);
+  if(items.length) loadFiles(items);
+});
+
+window.addEventListener('resize', () => engine.resize());
+
+$('hint').innerHTML = matchMedia('(pointer:coarse)').matches
+  ? '<span>单指旋转</span><span>双指缩放</span><span>双击聚焦</span>'
+  : '<span>左键旋转</span><span>滚轮缩放</span><span>右键平移</span><span>双击聚焦</span>';
+
+$('fpsAPI').textContent = engine.webGLVersion > 1 ? 'WebGL 2' : 'WebGL 1';
+setInterval(() => { $('fpsV').textContent = engine.getFps().toFixed(0); }, 500);
+
+/* ════════════ 主循环 ════════════ */
+let lastT = performance.now();
+scene.onBeforeRenderObservable.add(() => {
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastT)/1000);
+  lastT = now;
+  lerpLight(dt);
+
+  if(camAnim){
+    let k = (now - camAnim.t0) / camAnim.dur;
+    const end = k >= 1; if(end) k = 1;
+    const e = easeOutCubic(k);
+    camera.alpha  = camAnim.fa + (camAnim.ta - camAnim.fa)*e;
+    camera.beta   = camAnim.fb + (camAnim.tb - camAnim.fb)*e;
+    camera.radius = camAnim.fr + (camAnim.tr - camAnim.fr)*e;
+    BABYLON.Vector3.LerpToRef(camAnim.ft, camAnim.tt, e, camera.target);
+    if(end) camAnim = null;
+  }
+
+  if(autoRotate && !camAnim && now - lastInteract > 2600) camera.alpha += dt * 0.12;
+
+  if(camera.mode === BABYLON.Camera.ORTHOGRAPHIC_CAMERA) updateOrtho();
+
+  /* 相机（或平移目标）低于地平面时，淡出地面与网格 */
+  const camY = camera.target.y + camera.radius * Math.cos(camera.beta);
+  const fadeH = Math.max(camera.radius * 0.15, 1e-4);
+  const gFade = clamp(1 + Math.min(camY, camera.target.y) / fadeH, 0, 1);
+  gmat.alpha = gFade;
+  for(const g of gridMeshes) g.alpha = g.baseAlpha * gFade;
+
+  if(showcase){
+    const t = now/1000;
+    const sk = clamp((now - spawnT0)/1500, 0, 1);
+    showcase.scaling.setAll(Math.max(0.0001, backOut(sk)));
+    if(knot){
+      knot.rotation.y += dt*0.24;
+      knot.rotation.z = Math.sin(t*0.3)*0.06;
+      knot.position.y = 2.32 + Math.sin(t*0.68)*0.07;
+    }
+    if(ringPivots[0]) ringPivots[0].rotation.y += dt*0.16;
+    if(ringPivots[1]) ringPivots[1].rotation.y -= dt*0.11;
+    if(oct){
+      oct.rotation.y += dt*0.55; oct.rotation.x += dt*0.31;
+      oct.position.y = 4.3 + Math.sin(t*0.85 + 1.7)*0.06;
+    }
+  }
+});
+
+/* ════════════ 开场飞行 ════════════ */
+function openingSweep(){
+  if(!bounds) return;
+  const openAlpha = -Math.PI*1.05 + 2.35;
+  const openR = fitRadiusFor(openAlpha, 1.12);
+  camera.upperRadiusLimit = Math.max(60, openR*6);
+  camera.target.copyFrom(bounds.center);
+  camera.alpha = -Math.PI*1.05;
+  camera.beta = 0.6;
+  camera.radius = openR * 3.6;
+  flyTo(bounds.center, openR, {beta:1.12, alpha:openAlpha, dur:2400});
+}
+
+/* ════════════ 启动 ════════════ */
+rebuildGrid(8);   // 预置默认网格，初始加载期间舞台不空
+(async function init(){
+  const res = await tryInitialModel();
+  if(!res.ok){
+    if(EXPLICIT_MODEL){
+      /* 显式指定 ?model=：失败即空场景，不回落演示模型 */
+      setEmptyStage();
+      toast('模型载入失败 · ' + (res.reason ? res.reason + ' · ' : '') + INITIAL_MODEL, 4600);
+    }else{
+      buildShowcase();
+      toast('初始模型不可用 · 已载入演示场景', 2200);
+    }
+  }
+  openingSweep();
+})();
+engine.runRenderLoop(() => scene.render());
+})();
+</script>
+</body>
+</html>

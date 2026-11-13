@@ -1,4 +1,4 @@
-# 3dbabylonjs 网页版三维模型在线查看器。
+# 网页版babylonjs三维模型在线查看器。
 
 支持url打开：
 
